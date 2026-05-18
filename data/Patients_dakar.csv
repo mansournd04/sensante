@@ -1,0 +1,11 @@
+age,sexe,temperature,tension_sys,toux,fatigue,maux_tete,frissons,nausee,region,diagnostic
+18,M,38.7,9,0,1,0,1,1,Dakar,grippe
+27,F,39.7,8,0,1,1,0,0,Dakar,paludisme
+56,M,38.4,11,1,1,1,0,1,Thies,grippe
+40,F,39.2,9,0,1,1,0,1,Thies,typhoide
+16,F,40.4,10,1,1,1,1,1,Dakar,paludisme
+35,F,38.4,11,1,1,1,1,0,Dakar,grippe
+39,M,38.3,9,1,0,0,1,1,Dakar,grippe
+14,F,37.9,11,0,1,1,1,1,Thies,typhoide
+19,F,36.8,11,0,0,0,0,0,Fatick,sain
+46,F,39.6,8,1,1,1,1,0,Tambacounda,paludisme
