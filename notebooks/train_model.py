@@ -267,3 +267,18 @@ print("\nProbabilités par classe :")
 for classe, proba in zip(model_loaded.classes_, probas):
     bar = '#' * int(proba * 30)
     print(f"{classe:12s} : {proba:.1%} {bar}")
+
+    # =====================================================
+# Exercice 1 : Importance des features
+# =====================================================
+
+print("\nImportance des features :")
+
+importances = model.feature_importances_
+
+for name, imp in sorted(
+    zip(feature_cols, importances),
+    key=lambda x: x[1],
+    reverse=True
+):
+    print(f"{name:20s} : {imp:.3f}")
