@@ -3,9 +3,15 @@
 # Lab 3 - Integration de Modeles IA - ESP / UCAD
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 import joblib
 import numpy as np
+import os
+
+from dotenv import load_dotenv
+
+from groq import Groq
 
 # ---------------------------------------------------
 # Schemas Pydantic
@@ -33,13 +39,40 @@ class DiagnosticOutput(BaseModel):
 # ---------------------------------------------------
 # Application FastAPI
 # ---------------------------------------------------
-
 app = FastAPI(
     title="SenSante API",
     description="Assistant pre-diagnostic medical pour le Senegal",
-    version="0.2.0"
+    version="0.3.0"
 )
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+# Charger .env
+
+load_dotenv()
+
+api_key = os.getenv("GROQ_API_KEY")
+
+# Initialiser Groq
+
+groq_client = None
+
+if api_key:
+
+    groq_client = Groq(
+        api_key=api_key
+    )
+
+    print("Client Groq initialise")
+
+else:
+
+    print("Cle API absente")
 # ---------------------------------------------------
 # Chargement du modele (une seule fois)
 # ---------------------------------------------------
@@ -139,4 +172,169 @@ def predict(patient: PatientInput):
             diagnostic,
             "Consultez un medecin."
         )
+    )
+
+class ExplainInput(BaseModel):
+
+    diagnostic: str = Field(
+        ...,
+        description="Diagnostic predit par le modele"
+    )
+
+    probabilite: float = Field(
+        ...,
+        description="Probabilite du diagnostic"
+    )
+
+    age: int = Field(...)
+
+    sexe: str = Field(...)
+
+    temperature: float = Field(...)
+
+    region: str = Field(...)
+
+
+class ExplainOutput(BaseModel):
+
+    explication: str = Field(
+        ...,
+        description="Explication en francais"
+    )
+
+    modele_llm: str = Field(
+        default="llama-3.1-8b-instant",
+        description="Modele LLM utilise"
+    )
+# ---------------------------------------------------
+# Route GET /model-info
+# ---------------------------------------------------
+
+@app.get("/model-info")
+def model_info():
+
+    return {
+        "type_modele": type(model).__name__,
+        "nombre_arbres": model.n_estimators,
+        "classes": list(model.classes_),
+        "nombre_features": len(feature_cols)
+    }
+
+# Prompt systeme du LLM
+
+SYSTEM_PROMPT = """
+Tu es un assistant medical senegalais.
+
+Tu recois un diagnostic et des donnees patient.
+
+Explique le resultat en francais simple,
+comme un medecin parlerait a son patient.
+
+Sois rassurant mais recommande toujours
+une consultation medicale.
+
+Maximum 3 phrases.
+
+Ne fais JAMAIS de diagnostic toi-meme.
+
+Tu expliques uniquement le diagnostic fourni.
+"""
+
+
+# Route /explain
+
+@app.post(
+    "/explain",
+    response_model=ExplainOutput
+)
+
+def explain(data: ExplainInput):
+
+    """
+    Expliquer un diagnostic
+    en francais avec un LLM.
+    """
+
+    # Si Groq absent
+    if not groq_client:
+
+        return ExplainOutput(
+
+            explication=
+            "Service d'explication indisponible. "
+            "Cle API non configuree.",
+
+            modele_llm="aucun"
+        )
+
+    # Construire le prompt
+    user_prompt = (
+
+        f"Patient : {data.sexe}, "
+        f"{data.age} ans, "
+        f"region {data.region}\n"
+
+        f"Temperature : "
+        f"{data.temperature} C\n"
+
+        f"Diagnostic du modele : "
+        f"{data.diagnostic} "
+        f"(probabilite "
+        f"{data.probabilite:.0%})\n"
+
+        f"Explique ce resultat "
+        f"au patient."
+    )
+
+    try:
+
+        # Appel Groq
+        response = (
+            groq_client.chat
+            .completions.create(
+
+                model=
+                "llama-3.1-8b-instant",
+
+                messages=[
+
+                    {
+                        "role": "system",
+
+                        "content":
+                        SYSTEM_PROMPT
+                    },
+
+                    {
+                        "role": "user",
+
+                        "content":
+                        user_prompt
+                    }
+                ],
+
+                max_tokens=200,
+
+                temperature=0.3
+            )
+        )
+
+        explication = (
+            response
+            .choices[0]
+            .message.content
+        )
+
+    except Exception as e:
+
+        explication = (
+            f"Erreur lors de "
+            f"de l'appel au LLM : "
+            f"{str(e)}"
+        )
+
+    # Retour resultat
+    return ExplainOutput(
+
+        explication=explication
     )
