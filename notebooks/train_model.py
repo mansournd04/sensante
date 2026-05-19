@@ -282,3 +282,68 @@ for name, imp in sorted(
     reverse=True
 ):
     print(f"{name:20s} : {imp:.3f}")
+
+    # =====================================================
+# Exercice 2 : Tester avec d'autres patients
+# =====================================================
+
+patients_test = [
+    {
+        'nom': 'Jeune sans symptomes',
+        'age': 18,
+        'sexe': 'M',
+        'temperature': 36.5,
+        'tension_sys': 12,
+        'toux': False,
+        'fatigue': False,
+        'maux_tete': False,
+        'region': 'Dakar'
+    },
+
+    {
+        'nom': 'Adulte avec forte fievre',
+        'age': 35,
+        'sexe': 'F',
+        'temperature': 40.0,
+        'tension_sys': 11,
+        'toux': True,
+        'fatigue': True,
+        'maux_tete': True,
+        'region': 'Thiès'
+    },
+
+    {
+        'nom': 'Patient age avec toux',
+        'age': 65,
+        'sexe': 'M',
+        'temperature': 38.2,
+        'tension_sys': 13,
+        'toux': True,
+        'fatigue': True,
+        'maux_tete': False,
+        'region': 'Kaolack'
+    }
+]
+
+print("\n===== TEST DES PATIENTS =====")
+
+for patient in patients_test:
+
+    sexe_enc = le_sexe_loaded.transform([patient['sexe']])[0]
+    region_enc = le_region_loaded.transform([patient['region']])[0]
+
+    features = [
+        patient['age'],
+        sexe_enc,
+        patient['temperature'],
+        patient['tension_sys'],
+        int(patient['toux']),
+        int(patient['fatigue']),
+        int(patient['maux_tete']),
+        region_enc
+    ]
+
+    diagnostic = model_loaded.predict([features])[0]
+
+    print(f"\nPatient : {patient['nom']}")
+    print(f"Diagnostic predit : {diagnostic}")
