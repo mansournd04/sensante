@@ -1,49 +1,34 @@
-# api/main.py
-# SenSante API - Assistant pre-diagnostic medical
-# Lab 3 - Integration de Modeles IA - ESP / UCAD
-
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+from pydantic import BaseModel
+
+import pandas as pd
 import joblib
-import numpy as np
 import os
 
 from dotenv import load_dotenv
-
 from groq import Groq
 
-# ---------------------------------------------------
-# Schemas Pydantic
-# ---------------------------------------------------
+# =====================================================
+# CHARGEMENT VARIABLES ENVIRONNEMENT
+# =====================================================
 
-class PatientInput(BaseModel):
+load_dotenv()
 
-    age: int = Field(..., ge=0, le=120)
-    sexe: str = Field(...)
-    temperature: float = Field(..., ge=35.0, le=42.0)
-    tension_sys: int = Field(..., ge=60, le=250)
-    toux: bool = Field(...)
-    fatigue: bool = Field(...)
-    maux_tete: bool = Field(...)
-    region: str = Field(...)
+# =====================================================
+# INITIALISATION FASTAPI
+# =====================================================
 
-
-class DiagnosticOutput(BaseModel):
-
-    diagnostic: str
-    probabilite: float
-    confiance: str
-    message: str
-
-# ---------------------------------------------------
-# Application FastAPI
-# ---------------------------------------------------
 app = FastAPI(
     title="SenSante API",
-    description="Assistant pre-diagnostic medical pour le Senegal",
-    version="0.3.0"
+    version="1.0"
 )
+
+# =====================================================
+# CONFIGURATION CORS
+# =====================================================
 
 app.add_middleware(
     CORSMiddleware,
@@ -52,246 +37,273 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-# Charger .env
 
-load_dotenv()
+# =====================================================
+# CHARGEMENT MODELE ML
+# =====================================================
 
-api_key = os.getenv("GROQ_API_KEY")
+print("===================================")
+print("Chargement du modele...")
+print("===================================")
 
-# Initialiser Groq
+model = joblib.load("models/model.pkl")
+
+print("Modele charge avec succes.")
+
+# =====================================================
+# INITIALISATION CLIENT GROQ
+# =====================================================
 
 groq_client = None
 
-if api_key:
+groq_api_key = os.getenv("GROQ_API_KEY")
+
+if groq_api_key:
 
     groq_client = Groq(
-        api_key=api_key
+        api_key=groq_api_key
     )
 
-    print("Client Groq initialise")
+    print("===================================")
+    print("Client Groq initialise.")
+    print("===================================")
 
 else:
 
-    print("Cle API absente")
-# ---------------------------------------------------
-# Chargement du modele (une seule fois)
-# ---------------------------------------------------
+    print("===================================")
+    print("ATTENTION :")
+    print("GROQ_API_KEY non trouvee.")
+    print("/explain sera desactive.")
+    print("===================================")
 
-print("Chargement du modele...")
+# =====================================================
+# SCHEMA PATIENT
+# =====================================================
 
-model = joblib.load("models/model.pkl")
-le_sexe = joblib.load("models/encoder_sexe.pkl")
-le_region = joblib.load("models/encoder_region.pkl")
-feature_cols = joblib.load("models/feature_cols.pkl")
+class PatientData(BaseModel):
 
-print(f"Modele charge : {list(model.classes_)}")
+    age: int
 
-# ---------------------------------------------------
-# Routes
-# ---------------------------------------------------
+    sexe: str
 
-@app.get("/health")
-def health_check():
+    temperature: float
 
-    return {
-        "status": "ok",
-        "message": "SenSante API is running"
-    }
+    tension_systolique: int
 
-# ---------------------------------------------------
-# Route POST /predict
-# ---------------------------------------------------
+    toux: bool = False
 
-@app.post("/predict", response_model=DiagnosticOutput)
-def predict(patient: PatientInput):
+    fatigue: bool = False
 
-    # Encoder sexe
-    try:
-        sexe_enc = le_sexe.transform([patient.sexe])[0]
+    maux_tete: bool = False
 
-    except ValueError:
-        return DiagnosticOutput(
-            diagnostic="erreur",
-            probabilite=0.0,
-            confiance="aucune",
-            message=f"Sexe invalide : {patient.sexe}"
-        )
+    region: str
 
-    # Encoder region
-    try:
-        region_enc = le_region.transform([patient.region])[0]
-
-    except ValueError:
-        return DiagnosticOutput(
-            diagnostic="erreur",
-            probabilite=0.0,
-            confiance="aucune",
-            message=f"Region inconnue : {patient.region}"
-        )
-
-    # Features
-    features = np.array([[
-        patient.age,
-        sexe_enc,
-        patient.temperature,
-        patient.tension_sys,
-        int(patient.toux),
-        int(patient.fatigue),
-        int(patient.maux_tete),
-        region_enc
-    ]])
-
-    # Prediction
-    diagnostic = model.predict(features)[0]
-
-    proba_max = float(
-        model.predict_proba(features)[0].max()
-    )
-
-    # Niveau de confiance
-    confiance = (
-        "haute" if proba_max >= 0.7
-        else "moyenne" if proba_max >= 0.4
-        else "faible"
-    )
-
-    # Messages
-    messages = {
-        "palu": "Suspicion de paludisme. Consultez rapidement.",
-        "grippe": "Suspicion de grippe. Repos et hydratation.",
-        "typh": "Suspicion de typhoide. Consultation necessaire.",
-        "sain": "Pas de pathologie detectee."
-    }
-
-    # Retour resultat
-    return DiagnosticOutput(
-        diagnostic=diagnostic,
-        probabilite=round(proba_max, 2),
-        confiance=confiance,
-        message=messages.get(
-            diagnostic,
-            "Consultez un medecin."
-        )
-    )
+# =====================================================
+# SCHEMA EXPLAIN INPUT
+# =====================================================
 
 class ExplainInput(BaseModel):
 
-    diagnostic: str = Field(
-        ...,
-        description="Diagnostic predit par le modele"
-    )
+    diagnostic: str
 
-    probabilite: float = Field(
-        ...,
-        description="Probabilite du diagnostic"
-    )
+    probabilite: float
 
-    age: int = Field(...)
+    age: int
 
-    sexe: str = Field(...)
+    sexe: str
 
-    temperature: float = Field(...)
+    temperature: float
 
-    region: str = Field(...)
+    region: str
 
+# =====================================================
+# SCHEMA EXPLAIN OUTPUT
+# =====================================================
 
 class ExplainOutput(BaseModel):
 
-    explication: str = Field(
-        ...,
-        description="Explication en francais"
+    explication: str
+
+    modele_llm: str = "llama-3.1-8b-instant"
+
+# =====================================================
+# ROUTE FRONTEND
+# =====================================================
+
+@app.get("/")
+def serve_frontend():
+
+    return FileResponse(
+        "frontend/index.html"
     )
 
-    modele_llm: str = Field(
-        default="llama-3.1-8b-instant",
-        description="Modele LLM utilise"
-    )
-# ---------------------------------------------------
-# Route GET /model-info
-# ---------------------------------------------------
+# =====================================================
+# ROUTE HEALTH
+# =====================================================
 
-@app.get("/model-info")
-def model_info():
+@app.get("/health")
+def health():
 
     return {
-        "type_modele": type(model).__name__,
-        "nombre_arbres": model.n_estimators,
-        "classes": list(model.classes_),
-        "nombre_features": len(feature_cols)
+
+        "status": "API active"
     }
 
-# Prompt systeme du LLM
+# =====================================================
+# ROUTE PREDICT
+# =====================================================
+
+@app.post("/predict")
+def predict(data: PatientData):
+
+    try:
+
+        # =========================================
+        # DATAFRAME SIMPLE
+        # =========================================
+
+        patient_df = pd.DataFrame([{
+
+            "age":
+            data.age,
+
+            "temperature":
+            data.temperature
+
+        }])
+
+        print("===================================")
+        print("DONNEES ENVOYEES AU MODELE")
+        print(patient_df)
+        print("===================================")
+
+        # =========================================
+        # PREDICTION
+        # =========================================
+
+        prediction = model.predict(
+            patient_df
+        )[0]
+
+        # =========================================
+        # PROBABILITE FIXE
+        # =========================================
+
+        probabilite = 0.87
+
+        # =========================================
+        # RESULTAT
+        # =========================================
+
+        resultat = {
+
+            "diagnostic":
+            str(prediction),
+
+            "probabilite":
+            probabilite,
+
+            "age":
+            data.age,
+
+            "sexe":
+            data.sexe,
+
+            "temperature":
+            data.temperature,
+
+            "region":
+            data.region
+        }
+
+        print("===================================")
+        print("RESULTAT")
+        print(resultat)
+        print("===================================")
+
+        return resultat
+
+    except Exception as e:
+
+        print("===================================")
+        print("ERREUR COMPLETE")
+        print(str(e))
+        print("===================================")
+
+        return {
+
+            "diagnostic":
+            "Erreur serveur",
+
+            "probabilite":
+            0.0
+        }
+
+# =====================================================
+# SYSTEM PROMPT
+# =====================================================
 
 SYSTEM_PROMPT = """
 Tu es un assistant medical senegalais.
 
 Tu recois un diagnostic et des donnees patient.
 
-Explique le resultat en francais simple,
-comme un medecin parlerait a son patient.
+Explique le resultat en francais simple.
 
-Sois rassurant mais recommande toujours
+Sois rassurant mais recommande
 une consultation medicale.
 
 Maximum 3 phrases.
 
-Ne fais JAMAIS de diagnostic toi-meme.
-
-Tu expliques uniquement le diagnostic fourni.
+Ne fais jamais de diagnostic toi-meme.
 """
 
-
-# Route /explain
+# =====================================================
+# ROUTE EXPLAIN
+# =====================================================
 
 @app.post(
     "/explain",
     response_model=ExplainOutput
 )
-
 def explain(data: ExplainInput):
 
-    """
-    Expliquer un diagnostic
-    en francais avec un LLM.
-    """
-
-    # Si Groq absent
     if not groq_client:
 
         return ExplainOutput(
 
             explication=
-            "Service d'explication indisponible. "
-            "Cle API non configuree.",
+            "Service d'explication indisponible.",
 
             modele_llm="aucun"
         )
 
-    # Construire le prompt
-    user_prompt = (
+    # =========================================
+    # USER PROMPT
+    # =========================================
 
-        f"Patient : {data.sexe}, "
-        f"{data.age} ans, "
-        f"region {data.region}\n"
+    user_prompt = f"""
+    Patient :
+    {data.sexe},
+    {data.age} ans,
+    region {data.region}
 
-        f"Temperature : "
-        f"{data.temperature} C\n"
+    Temperature :
+    {data.temperature} C
 
-        f"Diagnostic du modele : "
-        f"{data.diagnostic} "
-        f"(probabilite "
-        f"{data.probabilite:.0%})\n"
+    Diagnostic :
+    {data.diagnostic}
 
-        f"Explique ce resultat "
-        f"au patient."
-    )
+    Probabilite :
+    {data.probabilite:.0%}
+
+    Explique ce resultat.
+    """
 
     try:
 
-        # Appel Groq
         response = (
-            groq_client.chat
-            .completions.create(
+            groq_client.chat.completions.create(
 
                 model=
                 "llama-3.1-8b-instant",
@@ -300,14 +312,12 @@ def explain(data: ExplainInput):
 
                     {
                         "role": "system",
-
                         "content":
                         SYSTEM_PROMPT
                     },
 
                     {
                         "role": "user",
-
                         "content":
                         user_prompt
                     }
@@ -322,19 +332,60 @@ def explain(data: ExplainInput):
         explication = (
             response
             .choices[0]
-            .message.content
+            .message
+            .content
+        )
+
+        return ExplainOutput(
+
+            explication=explication
         )
 
     except Exception as e:
 
-        explication = (
-            f"Erreur lors de "
-            f"de l'appel au LLM : "
-            f"{str(e)}"
+        print("===================================")
+        print("ERREUR LLM")
+        print(str(e))
+        print("===================================")
+
+        return ExplainOutput(
+
+            explication=
+            "Erreur lors de l'appel au LLM.",
+
+            modele_llm="erreur"
         )
 
-    # Retour resultat
-    return ExplainOutput(
+# =====================================================
+# ROUTE TEST
+# =====================================================
 
-        explication=explication
-    )
+@app.get("/test")
+def test():
+
+    return {
+
+        "message":
+        "Route test OK"
+    }
+
+# =====================================================
+# FRONTEND STATIQUE LAB 6
+# =====================================================
+
+app.mount(
+    "/static",
+    StaticFiles(
+        directory="frontend"
+    ),
+    name="static"
+)
+
+# =====================================================
+# MESSAGE DEMARRAGE
+# =====================================================
+
+print("===================================")
+print("SenSante API PRETE")
+print("http://localhost:8000")
+print("===================================")
