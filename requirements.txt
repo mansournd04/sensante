@@ -20,3 +20,5 @@ fastapi
 uvicorn
 python-dotenv
 groq
+python-multipart
+jinja2
