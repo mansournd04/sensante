@@ -1,0 +1,21 @@
+# Variables sensibles
+.env
+
+# Git
+.git
+.gitignore
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Environnement virtuel
+.venv/
+venv/
+
+# Notebooks
+notebooks/
+
+# Fichiers système
+.DS_Store
+Thumbs.db
